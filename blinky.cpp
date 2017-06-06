@@ -47,78 +47,10 @@ uint64_t millis() {
   return m;
 }
 
-#define LOW 0
-#define HIGH 1
-
-class Flasher {
-	// Class Member Variables
-	// These are initialized at startup
-	int ledPin;      // the number of the LED pin
-	unsigned long OnTime;     // milliseconds of on-time
-	unsigned long OffTime;    // milliseconds of off-time
-
-  const char * msg_ON = "Turning on LED \r\n";
-  const char * msg_OFF = "Turning off LED \r\n";
-	// These maintain the current state
-	int ledState;             		// ledState used to set the LED
-	unsigned long previousMillis;  	// will store last time LED was updated
-
-  // Constructor - creates a Flasher
-  // and initializes the member variables and state
-  public:
-  Flasher(int pin, long on, long off)
-  {
-	ledPin = pin;
-	//pinMode(ledPin, OUTPUT);
-  DDRB |= _BV(ledPin);
-
-	OnTime = on;
-	OffTime = off;
-
-	ledState = LOW;
-	previousMillis = 0;
-  }
-
-  void Update()
-  {
-    // check to see if it's time to change the state of the LED
-    unsigned long currentMillis = millis();
-
-    if((ledState == HIGH) && (currentMillis - previousMillis >= OnTime))
-    {
-    	ledState = LOW;  // Turn it off
-      previousMillis = currentMillis;  // Remember the time
-      serOut(msg_OFF);
-      PORTB &= ~_BV(ledPin);
-      //digitalWrite(ledPin, ledState);  // Update the actual LED
-    }
-    else if ((ledState == LOW) && (currentMillis - previousMillis >= OffTime))
-    {
-      ledState = HIGH;  // turn it on
-      previousMillis = currentMillis;   // Remember the time
-      //digitalWrite(ledPin, ledState);	  // Update the actual LED
-      serOut(msg_ON);
-      PORTB |= _BV(ledPin);
-    }
-  }
-};
-
-
-
-
-
-Flasher led1(LEDPIN4, 3000, 5000);
-
 void setup(){
   serOut("Starting Setup\r\n");
-  // Pin Change MaSK
-  PCMSK |= (1 << INTERRUPTPIN2); // Button or 12v detect
-  // Port B Data Direction
-  DDRB &= ~(1 << DATADIRECTIONPIN2); //cbi(DDRB, DATADIRECTIONPIN);//  set up as input  - pin2 clear bit  - set to zero
-  // Port B Data Register
-  PORTB |= (1<< DETECTPIN2); //cbi(PORTB, PORTPIN);// disable pull-up. hook up pulldown resistor. - set to zero
 
-
+  DDRB |= _BV(LEDPIN4); // Enable output
   /* interrup setup */
   // prescale timer0 to 1/8th the clock rate
   // overflow timer0 every 0.256 ms
@@ -141,9 +73,9 @@ char str[16];
 void loop(){
   unsigned long currentMillis = millis();
   bool is_power_on = PINB & _BV(INTERRUPTPIN2);
-
-  led1.Update();
   _delay_ms(100);
+
+#ifdef DEBUG
   serOut("DEBUG:");
 
   serOut(" is_relay_enabled: ");
@@ -171,35 +103,40 @@ void loop(){
   serOut(str);
 
   serOut("\r\n");
-
-
+#endif
 
   if( is_power_on && !is_12v_enabled){
+    #ifdef DEBUG
     serOut("12V is seen - Turning on relay\r\n");
+    #endif
     // Turn on relay
     is_relay_enabled = true;
     is_12v_enabled = true;
+    PORTB |= _BV(LEDPIN4);
+    // LEDPIN4 relay location
   }
 
 
   if(is_12v_enabled && !start_millis && !is_power_on){
+    start_millis = millis();
+    prepare_shutdown = true;
+#ifdef DEBUG
     serOut("12V is gone - ");
-    if(!start_millis){
-      serOut("Countdown Started at ");
-      start_millis = millis();
-      itoa(start_millis, str, 10);
-      serOut(str);
-      serOut("\r\n");
-      prepare_shutdown = true;
-    }
+    serOut("Countdown Started at ");
+    itoa(start_millis, str, 10);
+    serOut(str);
+    serOut("\r\n");
+#endif
+
   }
 
   if(is_power_on && prepare_shutdown){
     // Power recovered and we were about to shut down
-    serOut("Cancelling powerdown");
     prepare_shutdown = false;
     start_millis = 0;
-
+#ifdef DEBUG
+    serOut("\r\nCancelling powerdown\r\n");
+#endif
   }
 
   if(!is_power_on && !is_12v_enabled){
@@ -208,20 +145,25 @@ void loop(){
   }
 
   if(is_relay_enabled && prepare_shutdown){
+
+#ifdef DEBUG
     serOut("DEBUG:");
-
     serOut(" start_millis + millis_to_turn_off_relay: ");
-    itoa(start_millis + millis_to_turn_off_relay, str, 10);
+    itoa(((start_millis + millis_to_turn_off_relay)-currentMillis)/1000, str, 10);
     serOut(str);
-
     serOut(" millis(): ");
     itoa(currentMillis, str, 10);
     serOut(str);
-
-    serOut("\r\n");
+    serOut("\r");
+#endif
 
     if(currentMillis >= start_millis + millis_to_turn_off_relay){
-      serOut("Time met, shutting off relay\r\n");
+
+#ifdef DEBUG
+      serOut("\r\nTime met, shutting off relay\r\n");
+#endif
+
+      PORTB &= ~_BV(LEDPIN4);
       is_relay_enabled = false;
       is_12v_enabled = false;
       prepare_shutdown = false;
