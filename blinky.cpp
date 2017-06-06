@@ -18,7 +18,9 @@
 #define INTERRUPTPIN2 PCINT2
 #define DATADIRECTIONPIN2 DDB2
 
-void serOut(const char* str);
+void serOut(const char* str) {
+   while (*str) TxByte (*str++);
+}
 
 // TIMER Functions
 /* some vars */
@@ -45,9 +47,6 @@ uint64_t millis() {
   return m;
 }
 
-const char * msg_ON = "Turning on LED \r\n";
-const char * msg_OFF = "Turning off LED \r\n";
-
 #define LOW 0
 #define HIGH 1
 
@@ -58,6 +57,8 @@ class Flasher {
 	unsigned long OnTime;     // milliseconds of on-time
 	unsigned long OffTime;    // milliseconds of off-time
 
+  const char * msg_ON = "Turning on LED \r\n";
+  const char * msg_OFF = "Turning off LED \r\n";
 	// These maintain the current state
 	int ledState;             		// ledState used to set the LED
 	unsigned long previousMillis;  	// will store last time LED was updated
@@ -69,7 +70,7 @@ class Flasher {
   {
 	ledPin = pin;
 	//pinMode(ledPin, OUTPUT);
-  DDRB |= _BV(LEDPIN4);
+  DDRB |= _BV(ledPin);
 
 	OnTime = on;
 	OffTime = off;
@@ -102,13 +103,14 @@ class Flasher {
   }
 };
 
+
+
+
+
 Flasher led1(LEDPIN4, 3000, 5000);
 
 void setup(){
-  // Disable Interrupts
-  cli();
-  // Enable General Interrupt MasK
-  GIMSK |= (1 << PCIE);   // enable PCINT interrupt in the general interrupt mask //SBI
+  serOut("Starting Setup\r\n");
   // Pin Change MaSK
   PCMSK |= (1 << INTERRUPTPIN2); // Button or 12v detect
   // Port B Data Direction
@@ -123,37 +125,108 @@ void setup(){
   TCCR0B |= (1<<CS01);
   // enable timer overflow interrupt
   TIMSK  |= 1<<TOIE0;
-
-  // Enable global interrupts
   sei();
-
 }
 
 int count = 54;
 
-ISR(PCINT_VECTOR2){
-  serOut("INTERRUPT RUN");
-  char buffer [24];
-  itoa(count,buffer,10);
-  serOut(buffer);
-  if(PINB & _BV(INTERRUPTPIN2)){
-    serOut("12V is seen");
-  }
+bool is_relay_enabled = false;
+bool prepare_shutdown = false;
+int millis_to_turn_off_relay = 10000;
+unsigned long start_millis = 0;
+bool is_12v_enabled = false;
+char str[16];
 
-  serOut("This is a test\r\n");
-}
-
-void serOut(const char* str) {
-   while (*str) TxByte (*str++);
-}
 
 void loop(){
+  unsigned long currentMillis = millis();
+  bool is_power_on = PINB & _BV(INTERRUPTPIN2);
 
   led1.Update();
-  _delay_ms(300);
-  serOut("Running through update\r\n");;
-  if(PINB & _BV(INTERRUPTPIN2)){
-    serOut("12V is seen");
+  _delay_ms(100);
+  serOut("DEBUG:");
+
+  serOut(" is_relay_enabled: ");
+  itoa(is_relay_enabled, str, 10);
+  serOut(str);
+
+  serOut(" prepare_shutdown: ");
+  itoa(prepare_shutdown, str, 10);
+  serOut(str);
+
+  serOut(" start_millis: ");
+  itoa(start_millis, str, 10);
+  serOut(str);
+
+  serOut(" is_12v_enabled: ");
+  itoa(is_12v_enabled, str, 10);
+  serOut(str);
+
+  serOut(" is_power_on: ");
+  itoa(is_power_on, str, 10);
+  serOut(str);
+
+  serOut(" millis() ");
+  itoa(currentMillis, str, 10);
+  serOut(str);
+
+  serOut("\r\n");
+
+
+
+  if( is_power_on && !is_12v_enabled){
+    serOut("12V is seen - Turning on relay\r\n");
+    // Turn on relay
+    is_relay_enabled = true;
+    is_12v_enabled = true;
+  }
+
+
+  if(is_12v_enabled && !start_millis && !is_power_on){
+    serOut("12V is gone - ");
+    if(!start_millis){
+      serOut("Countdown Started at ");
+      start_millis = millis();
+      itoa(start_millis, str, 10);
+      serOut(str);
+      serOut("\r\n");
+      prepare_shutdown = true;
+    }
+  }
+
+  if(is_power_on && prepare_shutdown){
+    // Power recovered and we were about to shut down
+    serOut("Cancelling powerdown");
+    prepare_shutdown = false;
+    start_millis = 0;
+
+  }
+
+  if(!is_power_on && !is_12v_enabled){
+    // Power turning off
+    is_12v_enabled = false;
+  }
+
+  if(is_relay_enabled && prepare_shutdown){
+    serOut("DEBUG:");
+
+    serOut(" start_millis + millis_to_turn_off_relay: ");
+    itoa(start_millis + millis_to_turn_off_relay, str, 10);
+    serOut(str);
+
+    serOut(" millis(): ");
+    itoa(currentMillis, str, 10);
+    serOut(str);
+
+    serOut("\r\n");
+
+    if(currentMillis >= start_millis + millis_to_turn_off_relay){
+      serOut("Time met, shutting off relay\r\n");
+      is_relay_enabled = false;
+      is_12v_enabled = false;
+      prepare_shutdown = false;
+      start_millis = 0;
+    };
   }
 
 }
