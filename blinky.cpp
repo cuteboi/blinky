@@ -1,4 +1,8 @@
+//#define DEBUG
+
+#ifdef DEBUG
 #include <BasicSerial.h>
+#endif
 #include <avr/io.h>
 #include <util/delay.h>
 #include <stdlib.h>
@@ -18,9 +22,11 @@
 #define INTERRUPTPIN2 PCINT2
 #define DATADIRECTIONPIN2 DDB2
 
+#ifdef DEBUG
 void serOut(const char* str) {
    while (*str) TxByte (*str++);
 }
+#endif
 
 // TIMER Functions
 /* some vars */
@@ -48,7 +54,9 @@ uint64_t millis() {
 }
 
 void setup(){
+  #ifdef DEBUG
   serOut("Starting Setup\r\n");
+  #endif
 
   DDRB |= _BV(LEDPIN4); // Enable output
   /* interrup setup */
@@ -64,7 +72,7 @@ int count = 54;
 
 bool is_relay_enabled = false;
 bool prepare_shutdown = false;
-int millis_to_turn_off_relay = 10000;
+int millis_to_turn_off_relay = 5000;
 unsigned long start_millis = 0;
 bool is_12v_enabled = false;
 char str[16];
