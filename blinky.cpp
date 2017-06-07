@@ -1,7 +1,7 @@
 //#define DEBUG
 
 #ifdef DEBUG
-#include <BasicSerial.h>
+  #include <BasicSerial.h>
 #endif
 #include <avr/io.h>
 #include <util/delay.h>
@@ -23,9 +23,9 @@
 #define DATADIRECTIONPIN2 DDB2
 
 #ifdef DEBUG
-void serOut(const char* str) {
-   while (*str) TxByte (*str++);
-}
+  void serOut(const char* str) {
+     while (*str) TxByte (*str++);
+  }
 #endif
 
 // TIMER Functions
@@ -54,9 +54,9 @@ uint64_t millis() {
 }
 
 void setup(){
-  #ifdef DEBUG
+#ifdef DEBUG
   serOut("Starting Setup\r\n");
-  #endif
+#endif
 
   DDRB |= _BV(LEDPIN4); // Enable output
   /* interrup setup */
@@ -72,11 +72,13 @@ int count = 54;
 
 bool is_relay_enabled = false;
 bool prepare_shutdown = false;
-int millis_to_turn_off_relay = 5000;
+const int millis_to_turn_off_relay = 5000;
 unsigned long start_millis = 0;
 bool is_12v_enabled = false;
-char str[16];
 
+#ifdef DEBUG
+char str[16];
+#endif
 
 void loop(){
   unsigned long currentMillis = millis();
@@ -113,17 +115,27 @@ void loop(){
   serOut("\r\n");
 #endif
 
-  if( is_power_on && !is_12v_enabled){
-    #ifdef DEBUG
+  if(is_power_on){
+    if(!is_12v_enabled){
+#ifdef DEBUG
     serOut("12V is seen - Turning on relay\r\n");
-    #endif
-    // Turn on relay
-    is_relay_enabled = true;
-    is_12v_enabled = true;
-    PORTB |= _BV(LEDPIN4);
-    // LEDPIN4 relay location
-  }
+#endif
+      // Turn on relay
+      is_relay_enabled = true;
+      is_12v_enabled = true;
+      PORTB |= _BV(LEDPIN4);
+      // LEDPIN4 relay location
+    }
 
+    if(prepare_shutdown){
+      // Power recovered and we were about to shut down
+      prepare_shutdown = false;
+      start_millis = 0;
+  #ifdef DEBUG
+      serOut("\r\nCancelling powerdown\r\n");
+  #endif
+    }
+  }
 
   if(is_12v_enabled && !start_millis && !is_power_on){
     start_millis = millis();
@@ -136,20 +148,6 @@ void loop(){
     serOut("\r\n");
 #endif
 
-  }
-
-  if(is_power_on && prepare_shutdown){
-    // Power recovered and we were about to shut down
-    prepare_shutdown = false;
-    start_millis = 0;
-#ifdef DEBUG
-    serOut("\r\nCancelling powerdown\r\n");
-#endif
-  }
-
-  if(!is_power_on && !is_12v_enabled){
-    // Power turning off
-    is_12v_enabled = false;
   }
 
   if(is_relay_enabled && prepare_shutdown){
