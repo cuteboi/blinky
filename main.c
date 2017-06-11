@@ -3,7 +3,7 @@
 //
 // electronut.in
 //
-//#define DEBUG
+#define DEBUG
 
 // bool, true, false
 #include <stdbool.h>
@@ -13,10 +13,12 @@
 // Power savings Watchdog/sleep macros
 #include <avr/wdt.h>
 #include <avr/sleep.h>
+#include <avr/power.h>
 
 #include <avr/io.h>
 #include <util/delay.h>
 #include <avr/interrupt.h>
+
 
 #ifdef DEBUG // Serial output
 #include <stdlib.h>
@@ -45,8 +47,7 @@ uint64_t _millis = 0;
 uint16_t _1000us = 0;
 uint64_t old_millis = 0;
 
-ISR(TIM0_OVF_vect)
-{
+ISR(TIM0_OVF_vect){
   _1000us += 256;
   while (_1000us > 1000) {
     _millis++;
@@ -63,18 +64,18 @@ uint64_t millis() {
 }
 
 #ifdef DEBUG
-// write null terminated string
-void send_str(const char* str)
-{
-  while(*str) TxByte(*str++);
-}
+  // write null terminated string
+  void send_str(const char* str)
+  {
+    while(*str) TxByte(*str++);
+  }
 #endif
 
 
 bool prepare_shutdown = false;
 int millis_to_turn_off_relay = 5000;
 unsigned long start_millis = 0;
-bool is_12v_enabled = false;
+bool is_relay_latched = false;
 char str[24];
 
 
@@ -83,6 +84,9 @@ ISR(WDT_vect){}
 
 void setup(){
   init_timer();
+
+  // TUrn off everything, except the clock
+  PRR = 0b1011;
   // Check if this is a reset caused by Watchdog
   if(MCUSR & _BV(WDRF)){            // If a reset was caused by the Watchdog Timer...
     MCUSR &= ~_BV(WDRF);                 // Clear the WDT reset flag
@@ -112,62 +116,56 @@ void loop(){
     cli();                 // Disable Interrupts
     sleep_bod_disable();   // Disable BOD
     sei();                 // Enable Interrupts
-    if(!is_12v_enabled && !is_power_on){
-      #ifdef DEBUG
+    if(!is_relay_latched && !is_power_on){
+    #ifdef DEBUG
       itoa(currentMillis, str, 10);
       send_str("Going to sleep, nothing to do ");
       send_str(str);
       send_str("\r\n");
-      #endif
+    #endif
       sleep_cpu();           // Go to Sleep
       return;
     }
-
-/****************************
- *   Sleep Until WDT Times Out
- *   -> Go to WDT ISR
- ****************************/
-
   }
   // Sensor resolution
   _delay_ms(100);
 
-  #ifdef DEBUG
-    send_str("DEBUG:");
+#ifdef DEBUG
+  send_str("DEBUG:");
 
-    send_str(" prepare_shutdown: ");
-    itoa(prepare_shutdown, str, 10);
-    send_str(str);
+  send_str(" prepare_shutdown: ");
+  itoa(prepare_shutdown, str, 10);
+  send_str(str);
 
-    send_str(" start_millis: ");
-    itoa(start_millis, str, 10);
-    send_str(str);
+  send_str(" start_millis: ");
+  itoa(start_millis, str, 10);
+  send_str(str);
 
-    send_str(" is_12v_enabled: ");
-    itoa(is_12v_enabled, str, 10);
-    send_str(str);
+  send_str(" is_relay_latched: ");
+  itoa(is_relay_latched, str, 10);
+  send_str(str);
 
-    send_str(" is_power_on: ");
-    itoa(is_power_on, str, 10);
-    send_str(str);
+  send_str(" is_power_on: ");
+  itoa(is_power_on, str, 10);
+  send_str(str);
 
-    send_str(" millis() ");
-    itoa(currentMillis, str, 10);
-    send_str(str);
+  send_str(" millis() ");
+  itoa(currentMillis, str, 10);
+  send_str(str);
 
-    send_str("\r\n");
-  #endif
-  if( is_power_on && !is_12v_enabled){
+  send_str("\r\n");
+#endif
+  if( is_power_on && !is_relay_latched){
     #ifdef DEBUG
     send_str("12V is seen - Turning on relay\r\n");
     #endif
     // Turn on relay
-    is_12v_enabled = true;
+    is_relay_latched = true;
     DATA_PORT |= _BV(PIN_RELAY);
   }
 
 
-  if(is_12v_enabled && !start_millis && !is_power_on){
+  if(is_relay_latched && !start_millis && !is_power_on){
     start_millis = millis();
     prepare_shutdown = true;
 #ifdef DEBUG
@@ -189,13 +187,12 @@ void loop(){
 #endif
   }
 
-  if(!is_power_on && !is_12v_enabled){
+  if(!is_power_on && !is_relay_latched){
     // Power turning off
-    is_12v_enabled = false;
+    is_relay_latched = false;
   }
 
-  if(is_12v_enabled && prepare_shutdown){
-
+  if(is_relay_latched && prepare_shutdown){
 #ifdef DEBUG
     send_str("DEBUG:");
     send_str(" start_millis + millis_to_turn_off_relay: ");
@@ -206,15 +203,12 @@ void loop(){
     send_str(str);
     send_str("\r");
 #endif
-
     if(currentMillis >= start_millis + millis_to_turn_off_relay){
-
 #ifdef DEBUG
       send_str("\r\nTime met, shutting off relay\r\n");
 #endif
-
       DATA_PORT &= ~_BV(PIN_RELAY);
-      is_12v_enabled = false;
+      is_relay_latched = false;
       prepare_shutdown = false;
       start_millis = 0;
     };
@@ -222,8 +216,7 @@ void loop(){
 }
 
 
-int main (void)
-{
+int main (void){
   // Enable Interrupts
   setup();
 
