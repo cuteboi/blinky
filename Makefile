@@ -1,36 +1,74 @@
-MCU=attiny85
-AVRDUDEMCU=t85
-#F_CPU=1000000L
-F_CPU=8000000L
-CC=/usr/bin/avr-g++
-CFLAGS=-g -Os -Wall -mcall-prologues -mmcu=$(MCU) -IBasicSerial -DF_CPU=$(F_CPU) -Wno-write-strings
-OBJ2HEX=/usr/bin/avr-objcopy
-AVRDUDE=/usr/bin/avrdude
-TARGET=blinky
+# Name: Makefile
+#
+# A simple program for the ATtiny84 that blinks an LED.
+#
+# electronut.in
 
-all :
-	$(CC) -c $(CFLAGS) BasicSerial/BasicSerial.S -o BasicSerial.o
-	$(CC) $(CFLAGS) $(TARGET).cpp BasicSerial.o -o $(TARGET)
-	$(OBJ2HEX) -R .eeprom -O ihex $(TARGET) $(TARGET).hex
-	rm -f $(TARGET)
+DEVICE      = attiny84
+CLOCK      = 8000000
+PROGRAMMER = -c linuxspi
+OBJECTS    = main.o BasicSerial.o
 
-install : all
-	sudo gpio -g mode 22 out
-	sudo gpio -g write 22 0
-	sudo $(AVRDUDE) -p $(AVRDUDEMCU) -P /dev/spidev0.0 -c linuxspi -b 10000 -U flash:w:$(TARGET).hex
-	sudo gpio -g write 22 1
+# for ATTiny85 - unset CKDIV8
+FUSES				= -U lfuse:w:0xe2:m -U hfuse:w:0xdf:m -U efuse:w:0xff:m
 
-noreset : all
-	sudo $(AVRDUDE) -p $(AVRDUDEMCU) -P /dev/spidev0.0 -c linuxspi -b 10000 -U flash:w:$(TARGET).hex
+# Tune the lines below only if you know what you are doing:
 
-fuse :
-	sudo gpio -g mode 22 out
-	sudo gpio -g write 22 0
-# http://www.engbedded.com/fusecalc
-# Default of use 8mhz divide clock by 8, serial program downloading SPI enabled
-#	sudo $(AVRDUDE) -p $(AVRDUDEMCU) -P /dev/spidev0.0 -c linuxspi -b 10000 -U lfuse:w:0x62:m -U hfuse:w:0xdf:m -U efuse:w:0xff:m
-	sudo $(AVRDUDE) -p $(AVRDUDEMCU) -P /dev/spidev0.0 -c linuxspi -b 10000 -U lfuse:w:0xe2:m -U hfuse:w:0xdf:m -U efuse:w:0xff:m
-	sudo gpio -g write 22 1
+AVRDUDE = avrdude $(PROGRAMMER) -p $(DEVICE) -b 10000 -P /dev/spidev0.0
+COMPILE = avr-g++ -Wall -Os -DF_CPU=$(CLOCK) -mmcu=$(DEVICE)
 
-clean :
-	rm -f *.hex *.obj *.o
+# symbolic targets:
+all:  main.hex
+
+.c.o:
+	$(COMPILE) -c $< -o $@
+
+.S.o:
+	$(COMPILE) -x assembler-with-cpp -c $< -o $@
+# "-x assembler-with-cpp" should not be necessary since this is the default
+# file type for the .S (with capital S) extension. However, upper case
+# characters are not always preserved on Windows. To ensure WinAVR
+# compatibility define the file type manually.
+
+.c.s:
+	$(COMPILE) -S $< -o $@
+
+flash:	all
+	gpio -g mode 22 out
+	gpio -g write 22 0
+	$(AVRDUDE) -U flash:w:main.hex:i
+	gpio -g write 22 1
+
+fuse:
+	gpio -g mode 22 out
+	gpio -g write 22 0
+	$(AVRDUDE) $(FUSES)
+	gpio -g write 22 1
+
+# Xcode uses the Makefile targets "", "clean" and "install"
+install: flash fuse
+
+# if you use a bootloader, change the command below appropriately:
+load: all
+	bootloadHID main.hex
+
+clean:
+	rm -f main.hex main.elf $(OBJECTS)
+
+# file targets:
+main.elf: $(OBJECTS)
+	$(COMPILE) -o main.elf $(OBJECTS)
+
+main.hex: main.elf
+	rm -f main.hex
+	avr-objcopy -j .text -j .data -O ihex main.elf main.hex
+	avr-size --format=avr --mcu=$(DEVICE) main.elf
+# If you have an EEPROM section, you must also create a hex file for the
+# EEPROM and add it to the "flash" target.
+
+# Targets for code debugging and analysis:
+disasm:	main.elf
+	avr-objdump -d main.elf
+
+cpp:
+	$(COMPILE) -E main.c

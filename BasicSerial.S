@@ -8,7 +8,7 @@
 #include <avr/io.h>
 ; correct for avr/io.h 0x20 port offset for io instructions
 #define UART_Port (PORTB-0x20)
-#define UART_Tx 3
+#define UART_Tx 1
 
 #define bitcnt r18
 #define delayArg 19
@@ -40,4 +40,3 @@ TxDelay:
         dec bitcnt
         brne TxLoop
 	reti				; return and enable interrupts
-
