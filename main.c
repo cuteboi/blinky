@@ -1,10 +1,3 @@
-//
-// Serials communications (TX only) with ATtiny84
-//
-// electronut.in
-//
-#define DEBUG
-
 // bool, true, false
 #include <stdbool.h>
 #include <inttypes.h>
