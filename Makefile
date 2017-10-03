@@ -4,9 +4,15 @@
 #
 # electronut.in
 
+RPIGPIO = false
+
 DEVICE      = attiny84
 CLOCK      = 8000000
-PROGRAMMER = -c linuxspi
+# Development on the Raspberry Pi is over spi
+#PROGRAMMER = -c linuxspi
+
+#Development on workstation is over USBTinyDev
+PROGRAMMER = -c usbtiny
 OBJECTS    = main.o BasicSerial.o
 
 # for ATTiny85 - unset CKDIV8
@@ -14,11 +20,15 @@ FUSES				= -U lfuse:w:0xe2:m -U hfuse:w:0xdf:m -U efuse:w:0xff:m
 
 # Tune the lines below only if you know what you are doing:
 
-AVRDUDE = avrdude $(PROGRAMMER) -p $(DEVICE) -b 10000 -P /dev/spidev0.0
-COMPILE = avr-g++ -Wall -Os -DF_CPU=$(CLOCK) -mmcu=$(DEVICE)
+#AVRDUDE = avrdude $(PROGRAMMER) -p $(DEVICE) -b 10000 -P /dev/spidev0.0
+AVRDUDE = avrdude $(PROGRAMMER) -p $(DEVICE)
+COMPILE = avr-g++ -Wall $(CFLAGS) -Os -DF_CPU=$(CLOCK) -mmcu=$(DEVICE)
 
 # symbolic targets:
 all:  main.hex
+
+debug: CFLAGS += -DDEBUG
+debug: all
 
 .c.o:
 	$(COMPILE) -c $< -o $@
@@ -34,16 +44,16 @@ all:  main.hex
 	$(COMPILE) -S $< -o $@
 
 flash:	all
-	gpio -g mode 22 out
-	gpio -g write 22 0
+	# gpio -g mode 22 out
+	# gpio -g write 22 0
 	$(AVRDUDE) -U flash:w:main.hex:i
-	gpio -g write 22 1
+	#gpio -g write 22 1
 
 fuse:
-	gpio -g mode 22 out
-	gpio -g write 22 0
+	#gpio -g mode 22 out
+	#gpio -g write 22 0
 	$(AVRDUDE) $(FUSES)
-	gpio -g write 22 1
+	#gpio -g write 22 1
 
 # Xcode uses the Makefile targets "", "clean" and "install"
 install: flash fuse

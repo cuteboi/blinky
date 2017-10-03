@@ -22,8 +22,8 @@
 #define DDR_PORT  DDRA
 #define INPUT_PORT PINA
 
-#define PIN_RELAY PINA0
-#define PIN_12VDETECT PINA1
+#define PIN_RELAY PINA1
+#define PIN_14V PINA0
 
 
 void init_timer(){
@@ -70,7 +70,7 @@ int millis_to_turn_off_relay = 5000;
 unsigned long start_millis = 0;
 bool is_relay_latched = false;
 char str[24];
-
+bool is_power_on = false;
 
 // WatchDogTimer event, must be defined
 ISR(WDT_vect){}
@@ -88,7 +88,7 @@ void setup(){
   }
 
   // Set input pin
-  DDR_PORT &= _BV(PIN_12VDETECT);
+  DDR_PORT &= _BV(PIN_14V);
 
   // Set up Watch Dog Timer for Inactivity
   cli();
@@ -101,9 +101,11 @@ void setup(){
   sei();
 }
 
+#define send_debug(x) send_str(" " #x ": "); itoa(x,str,10); send_str(str);
+
 void loop(){
-  bool is_power_on = INPUT_PORT & _BV(PIN_12VDETECT);
-  uint64_t currentMillis = millis();
+  is_power_on = INPUT_PORT & _BV(PIN_14V);
+  uint64_t current_millis = millis();
 
   if (MCUCR & _BV(SE)){    // If Sleep is Enabled...
     cli();                 // Disable Interrupts
@@ -111,9 +113,8 @@ void loop(){
     sei();                 // Enable Interrupts
     if(!is_relay_latched && !is_power_on){
     #ifdef DEBUG
-      itoa(currentMillis, str, 10);
       send_str("Going to sleep, nothing to do ");
-      send_str(str);
+      send_debug(current_millis);
       send_str("\r\n");
     #endif
       sleep_cpu();           // Go to Sleep
@@ -121,36 +122,20 @@ void loop(){
     }
   }
   // Sensor resolution
-  _delay_ms(100);
+  _delay_ms(500);
 
 #ifdef DEBUG
   send_str("DEBUG:");
-
-  send_str(" prepare_shutdown: ");
-  itoa(prepare_shutdown, str, 10);
-  send_str(str);
-
-  send_str(" start_millis: ");
-  itoa(start_millis, str, 10);
-  send_str(str);
-
-  send_str(" is_relay_latched: ");
-  itoa(is_relay_latched, str, 10);
-  send_str(str);
-
-  send_str(" is_power_on: ");
-  itoa(is_power_on, str, 10);
-  send_str(str);
-
-  send_str(" millis() ");
-  itoa(currentMillis, str, 10);
-  send_str(str);
-
+  send_debug(prepare_shutdown);
+  send_debug(start_millis);
+  send_debug(is_relay_latched);
+  send_debug(is_power_on);
+  send_debug(current_millis);
   send_str("\r\n");
 #endif
   if( is_power_on && !is_relay_latched){
     #ifdef DEBUG
-    send_str("12V is seen - Turning on relay\r\n");
+    send_str("\r\n12V is seen - Turning on relay\r\n");
     #endif
     // Turn on relay
     is_relay_latched = true;
@@ -164,8 +149,7 @@ void loop(){
 #ifdef DEBUG
     send_str("12V is gone - ");
     send_str("Countdown Started at ");
-    itoa(start_millis, str, 10);
-    send_str(str);
+    send_debug(start_millis);
     send_str("\r\n");
 #endif
 
@@ -189,14 +173,13 @@ void loop(){
 #ifdef DEBUG
     send_str("DEBUG:");
     send_str(" start_millis + millis_to_turn_off_relay: ");
-    itoa(((start_millis + millis_to_turn_off_relay)-currentMillis)/1000, str, 10);
+    itoa(((start_millis + millis_to_turn_off_relay)-current_millis)/1000, str, 10);
     send_str(str);
-    send_str(" millis(): ");
-    itoa(currentMillis, str, 10);
-    send_str(str);
-    send_str("\r");
+
+    send_debug(current_millis);
+    send_str("\r\n");
 #endif
-    if(currentMillis >= start_millis + millis_to_turn_off_relay){
+    if(current_millis >= start_millis + millis_to_turn_off_relay){
 #ifdef DEBUG
       send_str("\r\nTime met, shutting off relay\r\n");
 #endif
